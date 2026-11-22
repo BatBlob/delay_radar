@@ -1,0 +1,5 @@
+gtfs-realtime-bindings==3.0.0
+protobuf>=7.34.0
+tzdata>=2024.1
+fastapi>=0.115
+uvicorn>=0.32

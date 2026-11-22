@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delay Radar</title>
+  <base href="__DELAY_RADAR_ROOT__/">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css">
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(14, 17, 22, 0.88);
+      --line: rgba(255, 255, 255, 0.08);
+      --text: #e7edf2;
+      --muted: #8e9bab;
+      --ok: #3dd68c;
+      --minor: #f0c14a;
+      --severe: #ff5c6c;
+    }
+    * { box-sizing: border-box; }
+    html, body, #map { margin: 0; height: 100%; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      background: #0c1014;
+    }
+    .panel {
+      position: absolute;
+      z-index: 1;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    }
+    header.panel {
+      top: 16px;
+      left: 16px;
+      padding: 14px 16px 12px;
+      width: min(360px, calc(100vw - 32px));
+    }
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+    .notice {
+      margin: 6px 0 10px;
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+    .banner {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(240, 193, 74, 0.16);
+      color: #f0c14a;
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+    .credits {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 11px;
+      font: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus { border-color: rgba(61, 214, 140, 0.7); }
+    .legend {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .legend i {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .ok { background: var(--ok); }
+    .minor { background: var(--minor); }
+    .severe { background: var(--severe); }
+    #status {
+      left: 16px;
+      bottom: 16px;
+      padding: 12px 14px;
+      width: min(280px, calc(100vw - 32px));
+      font-size: 13px;
+    }
+    #status p { margin: 0 0 4px; }
+    #status p:last-child { margin: 0; }
+    #status strong { font-weight: 600; }
+    .muted { color: var(--muted); }
+    #detail {
+      top: 16px;
+      right: 16px;
+      width: min(320px, calc(100vw - 32px));
+      padding: 14px 16px 16px;
+      display: none;
+    }
+    #detail h2 { margin: 0 0 2px; font-size: 20px; letter-spacing: -0.02em; }
+    #detail .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+    #detail dl { margin: 0; display: grid; grid-template-columns: 88px 1fr; gap: 6px 8px; font-size: 14px; }
+    #detail dt { color: var(--muted); }
+    #detail dd { margin: 0; }
+    #detail ol { margin: 10px 0 0; padding-left: 18px; font-size: 14px; }
+    #detail li { margin: 3px 0; }
+    @media (max-width: 820px) {
+      #detail {
+        top: auto;
+        right: 16px;
+        bottom: 148px;
+        left: 16px;
+        width: auto;
+      }
+    }
+    button.close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    #count { margin-top: 8px; font-size: 12px; color: var(--muted); }
+    #update {
+      margin-top: 10px;
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #update:disabled { opacity: 0.6; cursor: default; }
+    .delay-severe { color: var(--severe); }
+    .delay-minor { color: var(--minor); }
+    .delay-on_time { color: var(--ok); }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <header class="panel">
+    <h1>Delay Radar</h1>
+    <p id="banner" class="banner" hidden></p>
+    <p class="notice">Estimated positions, from the timetable and the delay, not from GPS. Unofficial, not affiliated with Deutsche Bahn.</p>
+    <input id="search" type="search" placeholder="Filter by train, e.g. ICE 42 or S2" autocomplete="off">
+    <div class="legend">
+      <span><i class="ok"></i>On time</span>
+      <span><i class="minor"></i>5–15 min</span>
+      <span><i class="severe"></i>Over 15 min</span>
+    </div>
+    <div id="count">Loading trains…</div>
+    <button id="update" type="button">Update now</button>
+  </header>
+  <section id="status" class="panel">
+    <div id="status-body"><p class="muted">Waiting for the feed…</p></div>
+    <p class="credits">Timetable: DELFI e.V. and gtfs.de, Creative Commons 4.0. Delays: gtfs.de, CC BY-SA 4.0. Map: © OpenStreetMap contributors, ODbL, via OpenFreeMap.</p>
+  </section>
+  <aside id="detail" class="panel">
+    <button class="close" type="button" aria-label="Close">×</button>
+    <h2 id="d-name"></h2>
+    <div class="sub" id="d-sub"></div>
+    <dl>
+      <dt>Next stop</dt><dd id="d-next"></dd>
+      <dt>Delay</dt><dd id="d-delay"></dd>
+      <dt>Where</dt><dd id="d-where"></dd>
+    </dl>
+    <ol id="d-upcoming"></ol>
+  </aside>
+  <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+  <script>
+    const map = new maplibregl.Map({
+      container: "map",
+      style: "https://tiles.openfreemap.org/styles/dark",
+      center: [10.4, 51.1],
+      zoom: 5.5,
+      attributionControl: true
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+
+    const display = new Map();
+    let allFeatures = [];
+    let selected = null;
+    let ticking = false;
+
+    map.on("load", () => {
+      map.addSource("trains", { type: "geojson", data: emptyCollection() });
+      map.addLayer({
+        id: "trains",
+        type: "circle",
+        source: "trains",
+        paint: {
+          "circle-radius": ["case", ["==", ["get", "id"], ["literal", ""]], 7, 5.5],
+          "circle-color": ["match", ["get", "band"],
+            "on_time", "#3dd68c",
+            "minor", "#f0c14a",
+            "severe", "#ff5c6c",
+            "#9aa4b2"],
+          "circle-stroke-width": 1.5,
+          "circle-stroke-color": "#0c1014",
+          "circle-opacity": 0.95
+        }
+      });
+      map.on("click", "trains", (event) => {
+        const feature = event.features && event.features[0];
+        if (feature) showDetail(feature.properties);
+      });
+      map.on("mouseenter", "trains", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "trains", () => { map.getCanvas().style.cursor = ""; });
+      loadOnce();
+      const stream = new EventSource("api/stream");
+      stream.addEventListener("update", (event) => applyPayload(JSON.parse(event.data)));
+    });
+
+    document.getElementById("search").addEventListener("input", () => syncTargets());
+    document.getElementById("update").addEventListener("click", updateNow);
+    document.querySelector(".close").addEventListener("click", () => {
+      document.getElementById("detail").style.display = "none";
+      selected = null;
+    });
+
+    function emptyCollection() {
+      return { type: "FeatureCollection", features: [] };
+    }
+
+    async function updateNow() {
+      const button = document.getElementById("update");
+      button.disabled = true;
+      button.textContent = "Updating…";
+      try {
+        const response = await fetch("api/refresh", { method: "POST" });
+        if (response.ok) applyPayload(await response.json());
+      } finally {
+        button.disabled = false;
+        button.textContent = "Update now";
+      }
+    }
+
+    async function loadOnce() {
+      const [positions, status] = await Promise.all([
+        fetch("api/positions").then((response) => response.ok ? response.json() : null),
+        fetch("api/status").then((response) => response.ok ? response.json() : null)
+      ]);
+      if (status) renderStatus(status);
+      if (positions && Array.isArray(positions.features)) applyPayload({ positions, status });
+    }
+
+    function applyPayload(payload) {
+      renderStatus(payload.status);
+      if (!payload.positions || !Array.isArray(payload.positions.features)) return;
+      allFeatures = payload.positions.features;
+      syncTargets();
+    }
+
+    function queryText() {
+      return document.getElementById("search").value.trim().toLowerCase();
+    }
+
+    function syncTargets() {
+      const query = queryText();
+      const keep = new Set();
+      for (const feature of allFeatures) {
+        const props = feature.properties;
+        const haystack = (props.name + " " + props.trip_id).toLowerCase();
+        if (query && !haystack.includes(query)) continue;
+        keep.add(props.id);
+        const [lng, lat] = feature.geometry.coordinates;
+        const current = display.get(props.id);
+        if (!current) display.set(props.id, { lng, lat, tx: lng, ty: lat, feature });
+        else {
+          current.tx = lng;
+          current.ty = lat;
+          current.feature = feature;
+        }
+      }
+      for (const id of [...display.keys()]) {
+        if (!keep.has(id)) display.delete(id);
+      }
+      document.getElementById("count").textContent =
+        (query ? display.size + " of " + allFeatures.length : allFeatures.length) + " trains on the map";
+      paint();
+      kick();
+    }
+
+    function kick() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(tick);
+    }
+
+    function tick() {
+      let moving = false;
+      for (const item of display.values()) {
+        const dx = item.tx - item.lng;
+        const dy = item.ty - item.lat;
+        if (Math.abs(dx) > 0.00002 || Math.abs(dy) > 0.00002) {
+          item.lng += dx * 0.18;
+          item.lat += dy * 0.18;
+          moving = true;
+        } else {
+          item.lng = item.tx;
+          item.lat = item.ty;
+        }
+      }
+      paint();
+      if (moving) requestAnimationFrame(tick);
+      else ticking = false;
+    }
+
+    function paint() {
+      if (!map.getSource("trains")) return;
+      const features = [];
+      for (const item of display.values()) {
+        features.push({
+          type: "Feature",
+          id: item.feature.id,
+          properties: item.feature.properties,
+          geometry: { type: "Point", coordinates: [item.lng, item.lat] }
+        });
+      }
+      map.getSource("trains").setData({ type: "FeatureCollection", features });
+    }
+
+    function showDetail(props) {
+      selected = props.id;
+      const upcoming = parseUpcoming(props.upcoming);
+      document.getElementById("d-name").textContent = props.name || "Train";
+      document.getElementById("d-sub").textContent = (props.status === "dwelling" ? "Waiting at a station" : "Between stations") + " · " + props.trip_id;
+      document.getElementById("d-next").textContent = props.next_stop || "—";
+      const delay = document.getElementById("d-delay");
+      if (props.delay_min === null || props.delay_min === undefined || props.delay_min === "") {
+        delay.textContent = "Not reported";
+        delay.className = "";
+      } else {
+        const minutes = Number(props.delay_min);
+        delay.textContent = (minutes > 0 ? "+" : "") + minutes + " min" + (props.delay_explicit === false || props.delay_explicit === "false" ? " (carried)" : "");
+        delay.className = "delay-" + props.band;
+      }
+      document.getElementById("d-where").textContent = props.status === "dwelling"
+        ? ("At " + (props.from_stop || props.next_stop || "the station"))
+        : ((props.from_stop || "?") + " → " + (props.next_stop || "?"));
+      const list = document.getElementById("d-upcoming");
+      list.innerHTML = "";
+      for (const name of upcoming) {
+        const item = document.createElement("li");
+        item.textContent = name;
+        list.appendChild(item);
+      }
+      document.getElementById("detail").style.display = "block";
+    }
+
+    function parseUpcoming(value) {
+      if (Array.isArray(value)) return value;
+      if (!value) return [];
+      try { return JSON.parse(value); } catch (error) { return String(value).split("|").filter(Boolean); }
+    }
+
+    function renderStatus(status) {
+      const banner = document.getElementById("banner");
+      if (banner) {
+        banner.hidden = !status || !status.banner;
+        banner.textContent = status && status.banner ? status.banner : "";
+      }
+      const box = document.getElementById("status-body");
+      if (!status) {
+        box.innerHTML = "<p class='muted'>Waiting for the feed…</p>";
+        return;
+      }
+      const feed = status.replay
+        ? "Snapshot · positions as of " + clock(status.as_of)
+        : "Feed · " + age(status.feed_age_seconds);
+      const schedule = "Schedule · " + age(status.schedule_age_seconds);
+      box.innerHTML =
+        "<p><strong>" + feed + "</strong></p>" +
+        "<p class='muted'>" + schedule + "</p>" +
+        "<p>" + Number(status.matched).toLocaleString() + " matched · " +
+        Number(status.in_motion).toLocaleString() + " in motion</p>" +
+        (status.error ? "<p class='delay-severe'>" + status.error + "</p>" : "");
+    }
+
+    function age(seconds) {
+      if (seconds === null || seconds === undefined) return "unknown";
+      const value = Number(seconds);
+      if (value < 90) return value + "s old";
+      if (value < 3600) return Math.round(value / 60) + " min old";
+      return Math.round(value / 3600) + "h old";
+    }
+
+    function clock(iso) {
+      if (!iso) return "unknown";
+      const date = new Date(iso);
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+  </script>
+</body>
+</html>
