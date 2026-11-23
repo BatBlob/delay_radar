@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0c1014"/>
+  <rect x="24" y="24" width="1152" height="582" rx="16" fill="#12161c" stroke="#2a3140"/>
+  <text x="600" y="290" text-anchor="middle" fill="#e7edf2" font-family="Segoe UI, sans-serif" font-size="28">Replace this with a screenshot or GIF</text>
+  <text x="600" y="340" text-anchor="middle" fill="#8e9bab" font-family="Segoe UI, sans-serif" font-size="18">Delay Radar, dark map, trains colored by delay</text>
+</svg>
