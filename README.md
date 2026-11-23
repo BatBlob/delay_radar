@@ -77,39 +77,20 @@ GitHub Actions runs the same command on push and pull request.
 
 ## Deploy
 
-It is deployed at [https://northquill.xyz/delay_radar/](https://northquill.xyz/delay_radar/) on the existing EC2 instance. Nginx on that host already serves another API on port 8000, so this container is published on host port 8001. The two location blocks are in the existing `listen 443` server for `northquill.xyz`, not in a new site file.
+The running demo is [https://northquill.xyz/delay_radar/](https://northquill.xyz/delay_radar/).
 
 ```text
 docker build -t delay-radar .
 docker run -d --name delay-radar --restart unless-stopped \
-  -p 127.0.0.1:8001:8000 \
-  -e DELAY_RADAR_ROOT=/delay_radar \
+  -p 8000:8000 \
   -e DELAY_RADAR_DATA=/data \
-  -v delay-radar-data:/data \
+  -v /path/to/data:/data \
   delay-radar
 ```
 
-`DELAY_RADAR_ROOT` is only the public prefix. Inside the container the app still serves `/` on port 8000. Nginx strips `/delay_radar/` and must not buffer the event stream:
+The container serves the map on port 8000. Mount a `data` directory at `DELAY_RADAR_DATA`. That directory holds the timetable and, once built, the track cache. Copy `data/cache` from a machine that already has it and the container skips the download. A first boot with an empty directory downloads about 300 MB and scans `stop_times.txt` once. `GET /health` answers before that finishes.
 
-```nginx
-location = /delay_radar {
-    return 301 /delay_radar/;
-}
-
-location /delay_radar/ {
-    proxy_pass http://127.0.0.1:8001/;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header Connection "";
-    proxy_buffering off;
-    proxy_cache off;
-    proxy_read_timeout 3600s;
-}
-```
-
-The first boot downloads about 300 MB and builds the database, so the map can sit on "Loading trains…" for a few minutes. `GET /health` on the container is ready before that. Leave about 2 GB of free disk for the timetable. The 4.6 GB OpenStreetMap extract is only the `railbuild` step, and that pbf is deleted after the filter. Copy the four cache files above into the volume if the routes should be there without running `railbuild` on the server. The process sits near 270 MB and spikes higher during a refresh. On this 2 GB instance that is enough, with the other services already using about 500 MB.
-
-`fly.toml` is an alternate for Fly.io. It is not what the northquill deploy uses.
+Set `DELAY_RADAR_ROOT=/delay_radar` when the page is published under that path. The value is the prefix on the page's links. The process still serves `/`.
 
 ## Design decisions
 
