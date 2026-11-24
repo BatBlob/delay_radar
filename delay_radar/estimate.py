@@ -103,6 +103,7 @@ def estimate(
     patches: tuple[StopPatch, ...] | list[StopPatch],
     now,
     canceled: bool = False,
+    paths=None,
 ) -> Position:
     base = dict(trip_id=trip_id, route_name=route_name, start_date=start_date)
     if canceled:
@@ -158,11 +159,7 @@ def estimate(
 
     index, fraction = origin[1], origin[2]
     start, end = timed[index][0], timed[index + 1][0]
-    lat = lon = gap = None
-    if None not in (start.lat, start.lon, end.lat, end.lon):
-        lat = start.lat + (end.lat - start.lat) * fraction
-        lon = start.lon + (end.lon - start.lon) * fraction
-        gap = _km(start.lat, start.lon, end.lat, end.lon)
+    lat, lon, gap, fallback = _locate(start, end, fraction, paths)
     delay, explicit = delays.get(end.seq, (0, False))
     return Position(
         status=Status.IN_MOTION,
@@ -176,8 +173,21 @@ def estimate(
         stop_mismatches=mismatches,
         gap_km=gap,
         upcoming=_names_after(timed, index),
+        track_fallback=fallback,
         **base,
     )
+
+
+def _locate(start: Call, end: Call, fraction: float, paths):
+    if None in (start.lat, start.lon, end.lat, end.lon):
+        return None, None, None, False
+    lat = start.lat + (end.lat - start.lat) * fraction
+    lon = start.lon + (end.lon - start.lon) * fraction
+    gap = _km(start.lat, start.lon, end.lat, end.lon)
+    if paths is None:
+        return lat, lon, gap, False
+    lat, lon, fell_back = paths.place(start.stop_id, end.stop_id, fraction, (lat, lon))
+    return lat, lon, gap, fell_back
 
 
 def _names_after(timed, index: int, limit: int = 6) -> tuple[str, ...]:

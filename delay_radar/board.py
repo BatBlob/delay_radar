@@ -14,6 +14,7 @@ from delay_radar.join import place
 from delay_radar.realtime import parse_feed
 from delay_radar.snapshot import load, resolve
 from delay_radar.store import Schedule, ensure_database
+from delay_radar.tracks import load_paths
 
 REFRESH_SECONDS = 180
 MANUAL_MIN_SECONDS = 15
@@ -37,6 +38,7 @@ class Board:
         self._wake = threading.Event()
         self._last_refresh = 0.0
         self._started = False
+        self.paths = load_paths(data_dir / "cache")
 
     def start(self) -> None:
         if self._started:
@@ -113,7 +115,7 @@ class Board:
         # A new connection each refresh: SQLite connections cannot cross threads.
         schedule = Schedule(ensure_database(static_path, self.data_dir / "cache"))
         try:
-            summary = place(schedule, feed, now)
+            summary = place(schedule, feed, now, paths=self.paths)
         finally:
             schedule.close()
         positions = feature_collection([*summary.in_motion, *summary.dwelling])
@@ -133,6 +135,7 @@ class Board:
             "in_motion": len(summary.in_motion),
             "dwelling": len(summary.dwelling),
             "on_map": len(positions["features"]),
+            "track_fallbacks": summary.track_fallbacks,
             "estimated": True,
             "banner": None if replay else banner,
             "error": None,

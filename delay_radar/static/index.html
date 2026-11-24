@@ -85,6 +85,7 @@
       font-size: 12px;
       color: var(--muted);
     }
+    .tracks-toggle { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
     .legend i {
       display: inline-block;
       width: 8px;
@@ -169,13 +170,14 @@
       <span><i class="ok"></i>On time</span>
       <span><i class="minor"></i>5–15 min</span>
       <span><i class="severe"></i>Over 15 min</span>
+      <label class="tracks-toggle"><input id="tracks" type="checkbox" checked> Tracks</label>
     </div>
     <div id="count">Loading trains…</div>
     <button id="update" type="button">Update now</button>
   </header>
   <section id="status" class="panel">
     <div id="status-body"><p class="muted">Waiting for the feed…</p></div>
-    <p class="credits">Timetable: DELFI e.V. and gtfs.de, Creative Commons 4.0. Delays: gtfs.de, CC BY-SA 4.0. Map: © OpenStreetMap contributors, ODbL, via OpenFreeMap.</p>
+    <p class="credits">Timetable: DELFI e.V. and gtfs.de, Creative Commons 4.0. Delays: gtfs.de, CC BY-SA 4.0. Map and rail lines: © OpenStreetMap contributors, ODbL, via OpenFreeMap.</p>
   </section>
   <aside id="detail" class="panel">
     <button class="close" type="button" aria-label="Close">×</button>
@@ -228,11 +230,18 @@
       });
       map.on("mouseenter", "trains", () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", "trains", () => { map.getCanvas().style.cursor = ""; });
+      loadTracks();
       loadOnce();
       const stream = new EventSource("api/stream");
       stream.addEventListener("update", (event) => applyPayload(JSON.parse(event.data)));
     });
 
+    document.getElementById("tracks").addEventListener("change", (event) => {
+      const visibility = event.target.checked ? "visible" : "none";
+      for (const id of ["tracks", "tracks-minor"]) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
+      }
+    });
     document.getElementById("search").addEventListener("input", () => syncTargets());
     document.getElementById("update").addEventListener("click", updateNow);
     document.querySelector(".close").addEventListener("click", () => {
@@ -242,6 +251,52 @@
 
     function emptyCollection() {
       return { type: "FeatureCollection", features: [] };
+    }
+
+    let minorRequested = false;
+
+    function trackVisibility() {
+      return document.getElementById("tracks").checked ? "visible" : "none";
+    }
+
+    function addTrackLayer(id, data, paint, minzoom) {
+      if (map.getSource(id)) return;
+      map.addSource(id, { type: "geojson", data: data });
+      const layer = {
+        id: id,
+        type: "line",
+        source: id,
+        layout: { "line-cap": "round", "line-join": "round", "visibility": trackVisibility() },
+        paint: paint
+      };
+      if (minzoom) layer.minzoom = minzoom;
+      map.addLayer(layer, "trains");
+    }
+
+    function loadMinorTracks() {
+      if (minorRequested || map.getZoom() < 12) return;
+      minorRequested = true;
+      fetch("api/tracks-minor").then((response) => response.ok ? response.json() : null).then((data) => {
+        if (!data) return;
+        addTrackLayer("tracks-minor", data, {
+          "line-color": "#9fb4c4",
+          "line-opacity": 0.35,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.8, 15, 1.6]
+        }, 12);
+      }).catch(() => {});
+    }
+
+    function loadTracks() {
+      fetch("api/tracks").then((response) => response.ok ? response.json() : null).then((data) => {
+        if (!data || !map.getSource) return;
+        addTrackLayer("tracks", data, {
+          "line-color": "#9fb4c4",
+          "line-opacity": 0.55,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.4, 8, 1.0, 12, 1.8, 15, 2.8]
+        });
+        loadMinorTracks();
+      }).catch(() => {});
+      map.on("zoomend", loadMinorTracks);
     }
 
     async function updateNow() {

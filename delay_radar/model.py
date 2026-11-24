@@ -84,3 +84,4 @@ class Position:
     stop_mismatches: int = 0
     gap_km: float | None = None
     upcoming: tuple[str, ...] = ()
+    track_fallback: bool = False

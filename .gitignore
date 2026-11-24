@@ -1,5 +1,6 @@
 .venv/
 data/
+video/
 __pycache__/
 *.pyc
 _probe_match.py

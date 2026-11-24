@@ -23,6 +23,7 @@ class Summary:
     stop_mismatches: int
     missing_coords: int
     long_gaps: int
+    track_fallbacks: int
     empty_route_id: int
     vehicle_count: int
     by_status: Counter = field(default_factory=Counter)
@@ -63,7 +64,7 @@ def _richer(new: RealtimeTrip, old: RealtimeTrip) -> bool:
     return False
 
 
-def place(schedule: Schedule, feed: ParsedFeed, now: datetime) -> Summary:
+def place(schedule: Schedule, feed: ParsedFeed, now: datetime, paths=None) -> Summary:
     summary = Summary(
         trip_updates=len(feed.trips),
         matched=0,
@@ -74,6 +75,7 @@ def place(schedule: Schedule, feed: ParsedFeed, now: datetime) -> Summary:
         stop_mismatches=0,
         missing_coords=0,
         long_gaps=0,
+        track_fallbacks=0,
         empty_route_id=sum(1 for trip in feed.trips if not trip.route_id),
         vehicle_count=feed.vehicle_count,
     )
@@ -118,6 +120,7 @@ def place(schedule: Schedule, feed: ParsedFeed, now: datetime) -> Summary:
             patches=trip.stops,
             now=now,
             canceled=trip.canceled,
+            paths=paths,
         )
         summary.by_status[position.status] += 1
         summary.stop_mismatches += position.stop_mismatches
@@ -126,6 +129,8 @@ def place(schedule: Schedule, feed: ParsedFeed, now: datetime) -> Summary:
                 summary.missing_coords += 1
             elif position.gap_km is not None and position.gap_km > 40:
                 summary.long_gaps += 1
+            if position.track_fallback:
+                summary.track_fallbacks += 1
             summary.in_motion.append(position)
         elif position.status == Status.DWELLING and position.lat is not None:
             summary.dwelling.append(position)
@@ -151,10 +156,18 @@ def place(schedule: Schedule, feed: ParsedFeed, now: datetime) -> Summary:
         )
     if summary.missing_coords:
         summary.problems.append(f"{summary.missing_coords} in-motion trains are missing stop coordinates.")
-    if summary.long_gaps:
+    if summary.long_gaps and paths is None:
         summary.problems.append(
             f"{summary.long_gaps} in-motion trains span more than 40 km between consecutive stops. "
             "The straight line leaves the railway because this feed has no shapes.txt."
+        )
+    elif summary.long_gaps:
+        summary.problems.append(
+            f"{summary.long_gaps} in-motion trains span more than 40 km between consecutive stops."
+        )
+    if summary.track_fallbacks:
+        summary.problems.append(
+            f"{summary.track_fallbacks} in-motion trains are on a leg with no routed track, drawn as a straight line."
         )
     if summary.empty_route_id:
         summary.problems.append(

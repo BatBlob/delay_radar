@@ -18,6 +18,7 @@ from delay_radar.model import Status
 from delay_radar.realtime import parse_feed
 from delay_radar.snapshot import load, record, resolve
 from delay_radar.store import Schedule, ensure_database
+from delay_radar.tracks import load_paths
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,14 +95,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if fallback:
         problems.append("using fv_free, so only long-distance trip ids can match.")
+    paths = load_paths(data / "cache")
     with zipfile.ZipFile(static_path) as archive:
-        if "shapes.txt" not in archive.namelist():
+        if paths is None and "shapes.txt" not in archive.namelist():
             problems.append("static feed has no shapes.txt. In-motion coordinates are straight lines between stops.")
 
     db_path = ensure_database(static_path, data / "cache")
     schedule = Schedule(db_path)
     try:
-        summary = place(schedule, feed, now)
+        summary = place(schedule, feed, now, paths=paths)
     finally:
         schedule.close()
 

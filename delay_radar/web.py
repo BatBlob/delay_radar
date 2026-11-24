@@ -8,10 +8,11 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from delay_radar.board import REFRESH_SECONDS, Board
+from delay_radar.tracks import display_minor_path, display_path
 
 PAGE = Path(__file__).resolve().parent / "static" / "index.html"
 DATA = Path("data")
@@ -24,6 +25,12 @@ def public_root(value: str | None = None) -> str:
 
 def render_page(root: str | None = None) -> str:
     return PAGE.read_text(encoding="utf-8").replace("__DELAY_RADAR_ROOT__", public_root(root))
+
+
+def _tracks(path: Path):
+    if not path.exists():
+        return {"type": "FeatureCollection", "features": []}
+    return FileResponse(path, media_type="application/geo+json")
 
 
 def create_app(board: Board | None = None) -> FastAPI:
@@ -41,6 +48,14 @@ def create_app(board: Board | None = None) -> FastAPI:
     @app.get("/")
     def index():
         return HTMLResponse(render_page())
+
+    @app.get("/api/tracks")
+    def tracks():
+        return _tracks(display_path(app.state.board.data_dir / "cache"))
+
+    @app.get("/api/tracks-minor")
+    def tracks_minor():
+        return _tracks(display_minor_path(app.state.board.data_dir / "cache"))
 
     @app.get("/api/positions")
     def positions():
